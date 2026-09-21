@@ -1,8 +1,28 @@
 <template>
   <div class="panel">
     <h4>📋 设备状态</h4>
+    <div class="filter-bar">
+      <el-select v-model="store.typeFilter" size="small" placeholder="全部类型" clearable
+                 class="filter-select" @change="onTypeChange">
+        <el-option v-for="t in deviceTypes" :key="t" :label="t" :value="t" />
+      </el-select>
+      <el-select v-model="store.statusFilter" size="small" placeholder="全部状态" clearable
+                 class="filter-select" @change="onStatusChange">
+        <el-option v-for="s in STATUSES" :key="s" :label="s" :value="s" />
+      </el-select>
+      <el-button v-if="store.hasFilter" size="small" text class="clear-btn" @click="store.clearFilters()">清空</el-button>
+    </div>
+    <div v-if="store.locatedDevice" class="locate-bar">
+      <span class="locate-text">已定位：{{ store.locatedDevice.type }} #{{ store.locatedDevice.id }}</span>
+      <el-button size="small" text class="clear-btn" @click="store.clearLocate()">返回</el-button>
+    </div>
     <div class="dev-list">
-      <div v-for="dev in devices" :key="dev.id" class="dev-row" :style="{borderLeftColor: STATUS_COLORS[dev.status]}">
+      <div v-if="!devices.length" class="empty">无匹配设备</div>
+      <div v-for="dev in devices" :key="dev.id"
+           class="dev-row"
+           :class="{located: store.locatedId === dev.id}"
+           :style="{borderLeftColor: STATUS_COLORS[dev.status]}"
+           @click="store.locateDevice(dev.id)">
         <div class="dev-info">
           <span class="dev-type">{{ dev.type }}</span>
           <span class="dev-id">#{{ dev.id }}</span>
@@ -22,7 +42,13 @@ import { computed } from 'vue'
 import { useFactoryStore } from '../store/factory'
 import { STATUS_COLORS } from '../types'
 const store = useFactoryStore()
-const devices = computed(() => store.data?.devices || [])
+const devices = computed(() => store.filteredDevices)
+const deviceTypes = computed(() => Array.from(new Set(store.devices.map(d => d.type))))
+const STATUSES = ['RUNNING', 'IDLE', 'FAULT', 'OFFLINE']
+
+// 选择/清空统一走 store action，保证趋势面板拿到的是同一份条件
+function onTypeChange(v: string | undefined) { store.setTypeFilter(v ?? '') }
+function onStatusChange(v: string | undefined) { store.setStatusFilter(v ?? '') }
 
 function tagType(s: string) {
   const m: Record<string, any> = { RUNNING: 'success', IDLE: 'warning', FAULT: 'danger' }
@@ -33,10 +59,17 @@ function tagType(s: string) {
 <style scoped>
 .panel{background:#0d1b2a;border-radius:8px;padding:12px;border:1px solid #1e3a5f}
 .panel h4{color:#64b5f6;margin-bottom:8px;font-size:13px}
+.filter-bar{display:flex;gap:6px;margin-bottom:8px;align-items:center}
+.filter-select{flex:1;min-width:0}
+.clear-btn{color:#64b5f6;padding:0 4px}
+.locate-bar{display:flex;justify-content:space-between;align-items:center;background:#1e3a5f55;border:1px solid #1e3a5f;border-radius:4px;padding:4px 8px;margin-bottom:8px}
+.locate-text{font-size:11px;color:#93c5fd}
 .dev-list{display:flex;flex-direction:column;gap:4px;max-height:250px;overflow-y:auto}
-.dev-row{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#112233;border-radius:4px;border-left:3px solid #666}
+.dev-row{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#112233;border-radius:4px;border-left:3px solid #666;cursor:pointer}
+.dev-row.located{background:#16324f;outline:1px solid #64b5f6}
 .dev-info{display:flex;gap:6px;align-items:center}
 .dev-type{font-size:12px;color:#e0e6ed;font-weight:600}
 .dev-id{font-size:11px;color:#64748b}
 .dev-metrics{display:flex;gap:10px;font-size:11px;color:#94a3b8}
+.empty{color:#64748b;font-size:12px;padding:8px 4px}
 </style>

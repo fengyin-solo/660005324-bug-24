@@ -1,11 +1,74 @@
 import { defineStore } from 'pinia'
-import { ref, onUnmounted } from 'vue'
-import type { FactoryData } from '@/types'
+import { ref, computed, watch } from 'vue'
+import type { FactoryData, Device } from '@/types'
+
+export type TrendRange = 15 | 30 | 60
+const MAX_HISTORY = 120 // 环形缓冲上限（秒），切换时段只在这份序列上切片
+
+export interface SamplePoint {
+  t: number
+  temperature: number
+  vibration: number
+}
 
 export const useFactoryStore = defineStore('factory', () => {
   const data = ref<FactoryData | null>(null)
   const ws = ref<WebSocket | null>(null)
   const connected = ref(false)
+
+  // —— 设备列表与趋势面板共享的同一份筛选/定位条件 ——
+  const typeFilter = ref('')
+  const statusFilter = ref('')
+  const locatedId = ref<number | null>(null)
+  const trendRange = ref<TrendRange>(30)
+
+  // —— 同一份采样序列：每次推送只追加一次，折线与标记都从这里取数 ——
+  const history = ref<Record<number, SamplePoint[]>>({})
+
+  const devices = computed<Device[]>(() => data.value?.devices ?? [])
+
+  const filteredDevices = computed<Device[]>(() =>
+    devices.value.filter(
+      d => (!typeFilter.value || d.type === typeFilter.value)
+        && (!statusFilter.value || d.status === statusFilter.value)
+    )
+  )
+
+  // 定位设备必须在当前筛选结果中，被过滤掉时由下方 watcher 清空 locatedId
+  const locatedDevice = computed<Device | null>(() => {
+    const list = filteredDevices.value
+    return locatedId.value === null ? null : list.find(d => d.id === locatedId.value) ?? null
+  })
+
+  function setTypeFilter(t: string) { typeFilter.value = t }
+  function setStatusFilter(s: string) { statusFilter.value = s }
+  function clearFilters() { typeFilter.value = ''; statusFilter.value = '' }
+  const hasFilter = computed(() => !!(typeFilter.value || statusFilter.value))
+
+  function locateDevice(id: number) { locatedId.value = id }
+  function clearLocate() { locatedId.value = null }
+  function setTrendRange(r: TrendRange) { trendRange.value = r }
+
+  // 筛选变化使定位目标失效时（如连续切换筛选），显式清掉，不留陈旧状态。
+  // 不能只 watch(locatedDevice)：loc 初始为 null 时其 getter 从未求值，
+  // watcher 收集不到筛选依赖，“先定位再改筛选”路径不会触发。
+  watch(
+    [filteredDevices, locatedId],
+    ([list, id]) => { if (id !== null && !list.some(d => d.id === id)) locatedId.value = null },
+    { flush: 'sync' }
+  )
+
+  function pushSample(now: number) {
+    if (!data.value) return
+    const next: Record<number, SamplePoint[]> = {}
+    for (const d of data.value.devices) {
+      const prev = history.value[d.id] ?? []
+      const arr = prev.length >= MAX_HISTORY ? prev.slice(prev.length - MAX_HISTORY + 1) : prev.slice()
+      arr.push({ t: now, temperature: d.temperature, vibration: d.vibration })
+      next[d.id] = arr
+    }
+    history.value = next
+  }
 
   function connect() {
     if (ws.value) return
@@ -13,7 +76,11 @@ export const useFactoryStore = defineStore('factory', () => {
     const s = new WebSocket(`${protocol}//${location.hostname}:8000/ws`)
     s.onopen = () => { connected.value = true; console.log('WS connected') }
     s.onmessage = (e) => {
-      try { data.value = JSON.parse(e.data) } catch {}
+      try {
+        const msg = JSON.parse(e.data) as FactoryData
+        data.value = msg
+        pushSample(Date.now())
+      } catch {}
     }
     s.onclose = () => { connected.value = false; ws.value = null }
     ws.value = s
@@ -25,5 +92,11 @@ export const useFactoryStore = defineStore('factory', () => {
     connected.value = false
   }
 
-  return { data, connected, connect, disconnect }
+  return {
+    data, connected,
+    typeFilter, statusFilter, locatedId, trendRange, history,
+    devices, filteredDevices, locatedDevice, hasFilter,
+    setTypeFilter, setStatusFilter, clearFilters, locateDevice, clearLocate, setTrendRange,
+    pushSample, connect, disconnect
+  }
 })

@@ -85,6 +85,8 @@ function updateDevices() {
       const color = STATUS_COLORS[dev.status] || '#95a5a6'
       if (body.material instanceof THREE.MeshPhongMaterial) {
         body.material.color.set(color); body.material.emissive.set(color)
+        // 定位高亮：仅增强自发光，颜色仍取状态色，不改原有布局/样式
+        body.material.emissiveIntensity = store.locatedId === dev.id ? 0.9 : 0.3
       }
     }
   }
@@ -93,6 +95,7 @@ function updateDevices() {
 function animate() { animId = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera) }
 onMounted(() => { initScene(); animate() })
 watch(() => store.data, updateDevices, { deep: true })
+watch(() => store.locatedId, updateDevices)
 onUnmounted(() => { cancelAnimationFrame(animId); renderer?.dispose() })
 </script>
 
