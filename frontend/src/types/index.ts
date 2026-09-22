@@ -22,6 +22,9 @@ export interface FactoryData {
   oee: OEEItem[]
 }
 
+export const DEVICE_TYPES = ['CNC', 'RobotArm', 'Conveyor', 'AGV', 'InjectionMolding', 'QCStation']
+export const DEVICE_STATUSES = ['RUNNING', 'IDLE', 'FAULT', 'OFFLINE']
+
 export const DEVICE_COLORS: Record<string, string> = {
   CNC: '#e74c3c', RobotArm: '#3498db', Conveyor: '#f39c12',
   AGV: '#2ecc71', InjectionMolding: '#9b59b6', QCStation: '#1abc9c'
